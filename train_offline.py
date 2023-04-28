@@ -10,13 +10,19 @@ from dataset_utils import Log
 import wandb
 
 import wrappers
-from dataset_utils import D4RLDataset, split_into_trajectories
+from dataset_utils import D4RLDataset, split_into_trajectories, MergeExpertUnion, load_d4rl_data, add_expert2suboptimal
 from evaluation import evaluate
 from learner import Learner
 
 FLAGS = flags.FLAGS
 
 flags.DEFINE_string('env_name', 'halfcheetah-expert-v2', 'Environment name.')
+
+flags.DEFINE_string('expert_dataset_name', 'expert-v2', 'name of expert dataset')
+flags.DEFINE_string('expert_dataset_num', 1, 'num of expert dataset')
+flags.DEFINE_multi_string('suboptimal_dataset_name', ['expert-v2', 'random-v2'], 'list of name of suboptimal dataset')
+flags.DEFINE_multi_integer('suboptimal_dataset_num', [400, 100], 'list of num of suboptimal dataset')
+
 flags.DEFINE_string('save_dir', './results/', 'Tensorboard logging dir.')
 flags.DEFINE_integer('seed', 42, 'Random seed.')
 flags.DEFINE_integer('eval_episodes', 10,
@@ -29,6 +35,8 @@ flags.DEFINE_string('mix_dataset', 'None', 'mix the dataset')
 flags.DEFINE_boolean('tqdm', True, 'Use tqdm progress bar.')
 flags.DEFINE_string('alg', 'SQL', 'the training algorithm')
 flags.DEFINE_float('alpha', 1.0 , 'temperature')
+flags.DEFINE_float('cost_grad_coeff', 10.0 , 'cost gradient penalty coefficient')
+flags.DEFINE_float('grad_coeff', 1e-4 , 'v and q gradient penalty coefficient')
 config_flags.DEFINE_config_file(
     'config',
     'default.py',
@@ -78,9 +86,34 @@ def make_env_and_dataset(env_name: str,
 
     return env, dataset
 
+def make_env_and_imitation_dataset(env_name: str, dataset_info: list, seed: int) -> Tuple[gym.Env, D4RLDataset]:
+    dataset_dir = 'dataset'
+    
+    env = gym.make(env_name)
+    env = wrappers.EpisodeMonitor(env)
+    env = wrappers.SinglePrecision(env)
+    
+    env.seed(seed)
+    env.action_space.seed(seed)
+    env.observation_space.seed(seed)
+    
+    expert_info, suboptimal_info = dataset_info
+    expert_dataset = load_d4rl_data(dataset_dir, env_name, expert_info, start_idx=0)
+    start_idx = [expert_info[1], 0] if (expert_info[0] == suboptimal_info[0][0]) else [0,0]
+    suboptimal_dataset = load_d4rl_data(dataset_dir, env_name, suboptimal_info, start_idx=start_idx)
+    union_dataset = add_expert2suboptimal(suboptimal_dataset, expert_dataset)
+    
+    imitation_dataset = MergeExpertUnion(expert_dataset, union_dataset)
+    
+    return env, imitation_dataset
+
 
 def main(_):
-    env, dataset = make_env_and_dataset(FLAGS.env_name, FLAGS.seed)
+    # env, dataset = make_env_and_dataset(FLAGS.env_name, FLAGS.seed)
+    expert_info = [FLAGS.expert_dataset_name, FLAGS.expert_dataset_num]
+    suboptimal_info = [FLAGS.suboptimal_dataset_name, FLAGS.suboptimal_dataset_num]
+    dataset_info = (expert_info, suboptimal_info)
+    env, dataset = make_env_and_imitation_dataset(FLAGS.env_name, dataset_info, FLAGS.seed)
     kwargs = dict(FLAGS.config)
     kwargs['alpha'] = FLAGS.alpha
     kwargs['alg'] = FLAGS.alg
@@ -93,8 +126,8 @@ def main(_):
     kwargs['env_name'] = FLAGS.env_name
 
     wandb.init(
-        project='project_name',
-        entity='your_wandb_id',
+        project='test',
+        entity='ssw030830',
         name=f"{FLAGS.env_name}",
         config=kwargs
     )

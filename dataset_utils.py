@@ -20,6 +20,10 @@ import sys
 Batch = collections.namedtuple(
     'Batch',
     ['observations', 'actions', 'rewards', 'masks', 'next_observations'])
+ImitationBatch = collections.namedtuple(
+    'ImitationBatch',
+    ['union_init_observations', 'expert_observations', 'expert_actions', 'expert_next_observations', 'expert_next_actions',
+     'union_observations', 'union_actions', 'union_next_observations', 'union_next_actions', 'union_dones'])
 
 
 def split_into_trajectories(observations, actions, rewards, masks, dones_float,
@@ -55,6 +59,202 @@ def merge_trajectories(trajs):
     return np.stack(observations), np.stack(actions), np.stack(
         rewards), np.stack(masks), np.stack(dones_float), np.stack(
             next_observations)
+
+
+def load_d4rl_data(dirname, env_id, dataset_info, start_idx, dtype=np.float32, in_recursive=False) -> ImitationDataset:
+    KEYS = ['observations', 'actions', 'rewards', 'terminals']
+    MAX_EPISODE_STEPS = 1000
+    dataname, num_trajectories = dataset_info
+    recursive_num = -1
+    if isinstance(dataname, list):
+        recursive_num = len(dataname)
+        dataname = dataname[0]
+        num_trajectories = num_trajectories[0]
+        start_idx = start_idx[0]
+
+    original_env_id = env_id
+    if env_id in ['Hopper-v2', 'Walker2d-v2', 'HalfCheetah-v2', 'Ant-v2']:
+        env_id = env_id.split('-v2')[0].lower()
+
+    filename = f'{env_id}_{dataname}'
+    filepath = os.path.join(dirname, filename + '.hdf5')
+    # if not exists
+    if not os.path.exists(filepath):
+        os.makedirs(dirname, exist_ok=True)
+        # Download the dataset
+        remote_url = f'http://rail.eecs.berkeley.edu/datasets/offline_rl/gym_mujoco_v2/{filename}.hdf5'
+        print(f'Download dataset from {remote_url} into {filepath} ...')
+        request.urlretrieve(remote_url, filepath)
+        print(f'Done!')
+
+    def get_keys(h5file):
+        keys = []
+
+        def visitor(name, item):
+            if isinstance(item, h5py.Dataset):
+                keys.append(name)
+
+        h5file.visititems(visitor)
+        return keys
+
+    dataset_file = h5py.File(filepath, 'r')
+    dataset_keys = KEYS
+    use_timeouts = False
+    use_next_obs = False
+    if 'timeouts' in get_keys(dataset_file):
+        if 'timeouts' not in dataset_keys:
+            dataset_keys.append('timeouts')
+        use_timeouts = True
+    dataset = {k: dataset_file[k][:] for k in dataset_keys}
+    dataset_file.close()
+    N = dataset['observations'].shape[0]
+    init_obs_, init_action_, obs_, action_, next_obs_, next_action_, rew_, done_ = [], [], [], [], [], [], [], []
+    episode_steps = 0
+    num_episodes = 0
+    for i in range(N - 1):
+        if 'ant' in env_id.lower():
+            obs = dataset['observations'][i][:27]
+            if use_next_obs:
+                next_obs = dataset['next_observations'][i][:27]
+            else:
+                next_obs = dataset['observations'][i + 1][:27]
+                next_action = dataset['actions'][i + 1][:27]
+        else:
+            obs = dataset['observations'][i]
+            if use_next_obs:
+                next_obs = dataset['next_observations'][i]
+            else:
+                next_obs = dataset['observations'][i + 1]
+                next_action = dataset['actions'][i + 1]
+        action = dataset['actions'][i]
+        done_bool = bool(dataset['terminals'][i])
+
+        if use_timeouts:
+            is_final_timestep = dataset['timeouts'][i]
+        else:
+            is_final_timestep = (episode_steps == MAX_EPISODE_STEPS - 1)
+
+        if is_final_timestep:
+            episode_steps = 0
+            num_episodes += 1
+            if num_episodes >= num_trajectories + start_idx:
+                break
+            continue
+
+        if num_episodes >= start_idx:
+            if episode_steps == 0:
+                init_obs_.append(obs)
+            obs_.append(obs)
+            next_obs_.append(next_obs)
+            action_.append(action)
+            next_action_.append(next_action)
+            done_.append(done_bool)
+
+        episode_steps += 1
+        if done_bool:
+            episode_steps = 0
+            num_episodes += 1
+            if num_episodes >= num_trajectories + start_idx:
+                break
+
+    if recursive_num > 1:
+        
+        recursive_num -= 1
+        dataname = dataname[1:]
+        num_trajectories = num_trajectories[1:]
+        start_idx = start_idx[1:]
+        dataset_info = (dataname, num_trajectories)
+        np_init_obs, np_obs, np_action, np_next_obs, np_next_action, np_done = load_d4rl_data(dirname, env_id, dataset_info, 
+                                                                                                start_idx, in_recursive=True)
+        concat_init_obs = np.concatenate([init_obs_, np_init_obs], dtype=dtype)
+        concat_obs = np.concatenate([obs_, np_obs], dtype=dtype)
+        concat_action = np.concatenate([action_, np_action], dtype=dtype)
+        concat_next_obs = np.concatenate([next_obs_, np_next_obs], dtype=dtype)
+        concat_next_action = np.concatenate([next_action_, np_next_action], dtype=dtype)
+        concat_done = np.concatenate([done_, np_done], dtype=dtype)
+        
+        if in recursive:
+            return concat_init_obs, concat_obs, concat_action, concat_next_obs, concat_next_action, concat_done
+        else:
+            print(f'{num_episodes} trajectories are sampled')
+            dataset = Imitationdataset(concat_init_obs, concat_obs, concat_action, concat_next_obs, concat_next_action, ocncat_done)
+            return dataset
+
+    if in_recursive:
+        return np.array(init_obs_, dtype=dtype), np.array(obs_, dtype=dtype), np.array(action_, dtype=dtype), np.array(
+            next_obs_, dtype=dtype), np.array(next_action_, dtype=dtype), np.array(done_, dtype=dtype)
+    else:
+        print(f'{num_episodes} trajectories are sampled')
+        dataset = ImitationDataset(np.array(init_obs_, dtype=dtype),
+                        np.array(obs_, dtype=dtype),
+                        np.array(action_, dtype=dtype),
+                        np.array(next_obs_, dtype=dtype),
+                        np.array(next_action_, dtype=dtype),
+                        np.array(done_, dtype=dtype),
+                        )
+
+        return dataset
+
+def add_expert2suboptimal(suboptimal_dataset: ImitationDataset, expert_dataset: ImitationDataset, dtype=np.float32) -> ImitationDataset:
+    
+    union_init_observations = np.concatenate([suboptimal_dataset.init_observations, expert_dataset.init_observations], dtype=dtype)
+    union_observations = np.concatenate([suboptimal_dataset.observations, expert_dataset.observations], dtype=dtype)
+    union_actions = np.concatenate([suboptimal_dataset.actions, expert_dataset.actions], dtype=dtype)
+    union_next_observations = np.concatenate([suboptimal_dataset.next_observations, expert_dataset.next_observations], dtype=dtype)
+    union_next_actions = np.concatenate([suboptimal_dataset.next_actions, expert_dataset.next_actions], dtype=dtype)
+    union_dones = np.concatenate([suboptimal_dataset.dones, expert_dataset.dones], dtype=dtype)
+    
+    union_dataset = ImitationDataset(union_init_observations,
+                                     union_observations,
+                                     union_actions,
+                                     union_next_observations,
+                                     union_next_actions,
+                                     union_dones)
+    
+    return union_dataset
+
+class MergeExpertUnion(object):
+    def __init__(self, expert_dataset: ImitationDataset, union_dataset: ImitationDataset):
+        self.expert_init_observations = expert_dataset.init_observations
+        self.expert_observations = expert_dataset.observations
+        self.expert_actions = expert_dataset.actions
+        self.expert_next_observations = expert_dataset.next_observations
+        self.expert_next_actions = expert_dataset.next_actions
+        self.expert_dones = expert_dataset.dones
+        
+        self.union_init_observations = union_dataset.init_observations
+        self.union_observations = union_dataset.observations
+        self.union_actions = union_dataset.actions
+        self.union_next_observations = union_dataset.next_observations
+        self.union_next_actions = union_dataset.next_actions
+        self.union_dones = union_dataset.dones
+    
+    def sample(self, batch_size: int) -> ImitationBatch:
+        union_init_idndx = np.random.randint(len(self.union_init_observations), size=batch_size)
+        expert_indx = np.random.randint(len(self.expert_observations), size=batch_size)
+        union_indx = np.random.randint(len(self.union_observations), size=batch_size)
+        return ImitationBatch(union_init_observations=self.union_init_observations[union_init_indx],
+                              expert_observations=self.expert_observations[expert_indx],
+                              expert_actions=self.expert_actions[expert_indx],
+                              expert_next_observations=self.expert_next_observations[expert_indx],
+                              expert_next_actions=self.expert_next_actions[expert_indx],
+                              union_observations=self.union_observations[union_indx],
+                              union_actions=self.union_actions[union_indx],
+                              union_next_observations=self.union_next_observations[union_indx],
+                              union_next_actions=self.union_next_actions[union_indx],
+                              union_dones=self.union_dones[union_indx])
+
+
+class ImitationDataset(object):
+    def __init__(self, init_observations: np.ndarray, observations: np.ndarray,
+                 actions: np.ndarray, next_observations: np.ndarray,
+                 next_actions: np.ndarray, dones_float: np.ndarray):
+        self.init_observations = init_observations
+        self.observations = observations
+        self.actions = actions
+        self.next_observations = next_observations
+        self.next_actions = next_actions
+        self.dones = dones_float
 
 
 class Dataset(object):

@@ -13,7 +13,7 @@ import value_net
 from common import Batch, InfoDict, Model, PRNGKey
 
 from actor import update_actor
-from critic import update_q, update_v
+from critic import update_q, update_v, update_cost
 
 
 def target_update(critic: Model, target_critic: Model, tau: float) -> Model:
@@ -47,19 +47,23 @@ def _update_jit_sql(
 @jax.jit
 def _update_jit_eql(
     rng: PRNGKey, actor: Model, critic: Model,
-    value: Model, target_critic: Model, batch: Batch, discount: float, tau: float, 
-    alpha: float
+    value: Model, target_critic: Model, cost: Model, batch: Batch, discount: float, tau: float, 
+    alpha: float, cost_grad_coeff: float, grad_coeff: float
 ) -> Tuple[PRNGKey, Model, Model, Model, Model, Model, InfoDict]:
 
-    new_value, value_info = update_v(target_critic, value, batch, alpha, alg='EQL')
     key, rng = jax.random.split(rng)
+    new_cost, cost_info = update_cost(key, cost, batch, cost_grad_coeff)
+    
+    new_value, value_info = update_v(target_critic, value, batch, alpha, alg='EQL')
+    
     new_actor, actor_info = update_actor(key, actor, target_critic,
                                              new_value, batch, alpha, alg='EQL')
     new_critic, critic_info = update_q(critic, new_value, batch, discount)
 
     new_target_critic = target_update(new_critic, target_critic, tau)
 
-    return rng, new_actor, new_critic, new_value, new_target_critic, {
+    return rng, new_actor, new_critic, new_value, new_target_critic, new_cost, {
+        **cost_info,
         **critic_info,
         **value_info,
         **actor_info
@@ -77,6 +81,8 @@ class Learner(object):
                  discount: float = 0.99,
                  tau: float = 0.005,
                  alpha: float = 0.1,
+                 cost_grad_coeff: float = 10.0,
+                 grad_coeff: float = 1e-4,
                  dropout_rate: Optional[float] = None,
                  value_dropout_rate: Optional[float] = None,
                  layernorm: bool = False,
@@ -93,11 +99,13 @@ class Learner(object):
         self.tau = tau
         self.discount = discount
         self.alpha = alpha
+        self.cost_grad_coeff = cost_grad_coeff
+        self.grad_coeff = grad_coeff
         self.max_clip = max_clip
         self.alg = alg
 
         rng = jax.random.PRNGKey(seed)
-        rng, actor_key, critic_key, value_key = jax.random.split(rng, 4)
+        rng, actor_key, critic_key, value_key, cost_key = jax.random.split(rng, 5)
 
         action_dim = actions.shape[-1]
         actor_def = policy.NormalTanhPolicy(hidden_dims,
@@ -131,11 +139,16 @@ class Learner(object):
 
         target_critic = Model.create(
             critic_def, inputs=[critic_key, observations, actions])
+        
+        cost = Model.create(value_def,
+                            inputs=[cost_key, observations, actions],
+                            tx=optax.adam(learning_rate=critic_lr))
 
         self.actor = actor
         self.critic = critic
         self.value = value
         self.target_critic = target_critic
+        self.cost = cost
         self.rng = rng
 
     def sample_actions(self,
@@ -156,14 +169,23 @@ class Learner(object):
                 self.rng, self.actor, self.critic, self.value, self.target_critic,
                 batch, self.discount, self.tau, self.alpha)
         elif self.alg == 'EQL':
-            new_rng, new_actor, new_critic, new_value, new_target_critic, info = _update_jit_eql(
-                self.rng, self.actor, self.critic, self.value, self.target_critic,
-                batch, self.discount, self.tau, self.alpha)
+            new_rng, new_actor, new_critic, new_value, new_target_critic, new_cost, info = _update_jit_eql(
+                self.rng, self.actor, self.critic, self.value, self.target_critic, self.cost,
+                batch, self.discount, self.tau, self.alpha, self.cost_grad_coeff, self.grad_coeff)
+        elif self.alg == 'zril':
+            pass
+        elif self.alg == 'sqla1':
+            pass
+        elif self.alg == 'drdemo':
+            pass
+        elif self.alg == 'demodice':
+            pass
 
         self.rng = new_rng
         self.actor = new_actor
         self.critic = new_critic
         self.value = new_value
         self.target_critic = new_target_critic
+        self.cost = new_cost
 
         return info
