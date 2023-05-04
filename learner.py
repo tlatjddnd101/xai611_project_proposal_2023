@@ -12,8 +12,8 @@ import value_net
 
 from common import Batch, InfoDict, Model, PRNGKey
 
-from actor import update_actor
-from critic import update_q, update_v, update_cost
+from actor import update_actor, update_actor_oil, update_actor_demodice
+from critic import update_q, update_v, update_q_oil, update_v_oil, update_cost_oil, update_v_demodice
 
 
 def target_update(critic: Model, target_critic: Model, tau: float) -> Model:
@@ -47,18 +47,39 @@ def _update_jit_sql(
 @jax.jit
 def _update_jit_eql(
     rng: PRNGKey, actor: Model, critic: Model,
-    value: Model, target_critic: Model, cost: Model, batch: Batch, discount: float, tau: float, 
-    alpha: float, cost_grad_coeff: float, grad_coeff: float
-) -> Tuple[PRNGKey, Model, Model, Model, Model, Model, InfoDict]:
-
-    key, rng = jax.random.split(rng)
-    new_cost, cost_info = update_cost(key, cost, batch, cost_grad_coeff)
+    value: Model, target_critic: Model, batch: Batch, discount: float, tau: float, 
+    alpha: float
+) -> Tuple[PRNGKey, Model, Model, Model, Model, InfoDict]:
     
     new_value, value_info = update_v(target_critic, value, batch, alpha, alg='EQL')
-    
+    key, rng = jax.random.split(rng)
     new_actor, actor_info = update_actor(key, actor, target_critic,
                                              new_value, batch, alpha, alg='EQL')
     new_critic, critic_info = update_q(critic, new_value, batch, discount)
+
+    new_target_critic = target_update(new_critic, target_critic, tau)
+
+    return rng, new_actor, new_critic, new_value, new_target_critic, {
+        **critic_info,
+        **value_info,
+        **actor_info
+    }
+    
+@jax.jit
+def _update_jit_zril(
+    rng: PRNGKey, actor: Model, critic: Model,
+    value: Model, target_critic: Model, cost: Model, batch: Batch, discount: float, tau: float, 
+    alpha: float, cost_grad_coeff: float, grad_coeff: float
+) -> Tuple[PRNGKey, Model, Model, Model, Model, Model, InfoDict]:
+    
+    key, rng = jax.random.split(rng)
+    new_cost, cost_info = update_cost_oil(key, cost, batch, cost_grad_coeff)
+    
+    new_value, value_info = update_v_oil(key, target_critic, value, new_cost, batch, alpha, grad_coeff, alg='zril')
+    
+    new_actor, actor_info = update_actor_oil(key, actor, target_critic,
+                                             new_value, new_cost, batch, alpha, alg='zril')
+    new_critic, critic_info = update_q_oil(key, critic, new_value, new_cost, batch, discount, grad_coeff, alg='zril')
 
     new_target_critic = target_update(new_critic, target_critic, tau)
 
@@ -68,6 +89,78 @@ def _update_jit_eql(
         **value_info,
         **actor_info
     }
+    
+@jax.jit
+def _update_jit_sqla1(
+    rng: PRNGKey, actor: Model, critic: Model,
+    value: Model, target_critic: Model, cost: Model, batch: Batch, discount: float, tau: float, 
+    alpha: float, cost_grad_coeff: float, grad_coeff: float
+) -> Tuple[PRNGKey, Model, Model, Model, Model, Model, InfoDict]:
+    
+    key, rng = jax.random.split(rng)
+    new_cost, cost_info = update_cost_oil(key, cost, batch, cost_grad_coeff)
+    
+    new_value, value_info = update_v_oil(key, target_critic, value, new_cost, batch, alpha, grad_coeff, alg='sqla1')
+    
+    new_actor, actor_info = update_actor_oil(key, actor, target_critic,
+                                             new_value, new_cost, batch, alpha, alg='sqla1')
+    new_critic, critic_info = update_q_oil(key, critic, new_value, new_cost, batch, discount, grad_coeff, alg='sqla1')
+
+    new_target_critic = target_update(new_critic, target_critic, tau)
+
+    return rng, new_actor, new_critic, new_value, new_target_critic, new_cost, {
+        **cost_info,
+        **critic_info,
+        **value_info,
+        **actor_info
+    }
+    
+@jax.jit
+def _update_jit_drdemo(
+    rng: PRNGKey, actor: Model, critic: Model,
+    value: Model, target_critic: Model, cost: Model, batch: Batch, discount: float, tau: float, 
+    alpha: float, cost_grad_coeff: float, grad_coeff: float
+) -> Tuple[PRNGKey, Model, Model, Model, Model, Model, InfoDict]:
+    
+    key, rng = jax.random.split(rng)
+    new_cost, cost_info = update_cost_oil(key, cost, batch, cost_grad_coeff)
+    
+    new_value, value_info = update_v_oil(key, target_critic, value, new_cost, batch, alpha, grad_coeff, alg='drdemo')
+    
+    new_actor, actor_info = update_actor_oil(key, actor, target_critic,
+                                             new_value, new_cost, batch, alpha, alg='drdemo')
+    new_critic, critic_info = update_q_oil(key, critic, new_value, new_cost, batch, discount, grad_coeff, alg='drdemo')
+
+    new_target_critic = target_update(new_critic, target_critic, tau)
+
+    return rng, new_actor, new_critic, new_value, new_target_critic, new_cost, {
+        **cost_info,
+        **critic_info,
+        **value_info,
+        **actor_info
+    }
+    
+@jax.jit
+def _update_jit_demodice(
+    rng: PRNGKey, actor: Model, value: Model, cost: Model, 
+    batch: Batch, discount: float,  
+    alpha: float, cost_grad_coeff: float, grad_coeff: float
+) -> Tuple[PRNGKey, Model, Model, Model, InfoDict]:
+    
+    key, rng = jax.random.split(rng)
+    new_cost, cost_info = update_cost_oil(key, cost, batch, cost_grad_coeff)
+    
+    new_value, value_info = update_v_demodice(key, value, new_cost, batch, discount, alpha, grad_coeff)
+    
+    new_actor, actor_info = update_actor_demodice(key, actor, new_value, new_cost, 
+                                                  batch, discount, alpha)
+
+    return rng, new_actor, new_value, new_cost, {
+        **cost_info,
+        **value_info,
+        **actor_info
+    }
+
 
 class Learner(object):
     def __init__(self,
@@ -128,8 +221,9 @@ class Learner(object):
                              tx=optimiser)
 
         critic_def = value_net.DoubleCritic(hidden_dims)
+        critic_init_input = jnp.concatenate([observations, actions], axis=-1)
         critic = Model.create(critic_def,
-                              inputs=[critic_key, observations, actions],
+                              inputs=[critic_key, critic_init_input],
                               tx=optax.adam(learning_rate=critic_lr))
 
         value_def = value_net.ValueCritic(hidden_dims, layer_norm=layernorm, dropout_rate=value_dropout_rate)
@@ -138,10 +232,12 @@ class Learner(object):
                              tx=optax.adam(learning_rate=value_lr))
 
         target_critic = Model.create(
-            critic_def, inputs=[critic_key, observations, actions])
+            critic_def, inputs=[critic_key, critic_init_input])
         
-        cost = Model.create(value_def,
-                            inputs=[cost_key, observations, actions],
+        cost_def = value_net.Cost(hidden_dims)
+        cost_init_input = jnp.concatenate([observations, actions], axis=-1)
+        cost = Model.create(cost_def,
+                            inputs=[cost_key, cost_init_input],
                             tx=optax.adam(learning_rate=critic_lr))
 
         self.actor = actor
@@ -169,23 +265,37 @@ class Learner(object):
                 self.rng, self.actor, self.critic, self.value, self.target_critic,
                 batch, self.discount, self.tau, self.alpha)
         elif self.alg == 'EQL':
-            new_rng, new_actor, new_critic, new_value, new_target_critic, new_cost, info = _update_jit_eql(
+            new_rng, new_actor, new_critic, new_value, new_target_critic, info = _update_jit_eql(
+                self.rng, self.actor, self.critic, self.value, self.target_critic,
+                batch, self.discount, self.tau, self.alpha)
+        elif self.alg == 'zril':
+            new_rng, new_actor, new_critic, new_value, new_target_critic, new_cost, info = _update_jit_zril(
                 self.rng, self.actor, self.critic, self.value, self.target_critic, self.cost,
                 batch, self.discount, self.tau, self.alpha, self.cost_grad_coeff, self.grad_coeff)
-        elif self.alg == 'zril':
-            pass
         elif self.alg == 'sqla1':
-            pass
+            new_rng, new_actor, new_critic, new_value, new_target_critic, new_cost, info = _update_jit_sqla1(
+                self.rng, self.actor, self.critic, self.value, self.target_critic, self.cost,
+                batch, self.discount, self.tau, self.alpha, self.cost_grad_coeff, self.grad_coeff)
         elif self.alg == 'drdemo':
-            pass
+            new_rng, new_actor, new_critic, new_value, new_target_critic, new_cost, info = _update_jit_drdemo(
+                self.rng, self.actor, self.critic, self.value, self.target_critic, self.cost,
+                batch, self.discount, self.tau, self.alpha, self.cost_grad_coeff, self.grad_coeff)
         elif self.alg == 'demodice':
-            pass
+            new_rng, new_actor, new_value, new_cost, info = _update_jit_demodice(
+                self.rng, self.actor, self.value, self.cost, batch, self.discount, 
+                self.alpha, self.cost_grad_coeff, self.grad_coeff)
+        else:
+            raise NotImplementedError
 
         self.rng = new_rng
         self.actor = new_actor
+        if self.alg == 'demodice':
+            new_critic = None
+            new_target_critic = None
         self.critic = new_critic
-        self.value = new_value
         self.target_critic = new_target_critic
-        self.cost = new_cost
+        self.value = new_value
+        if self.alg not in ['SQL', 'EQL']:
+            self.cost = new_cost
 
         return info

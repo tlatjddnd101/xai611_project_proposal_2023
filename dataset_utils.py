@@ -1,4 +1,7 @@
+import os
 import collections
+import h5py
+from urllib import request
 from sqlite3 import DatabaseError
 from typing import Optional
 
@@ -61,16 +64,31 @@ def merge_trajectories(trajs):
             next_observations)
 
 
+class ImitationDataset(object):
+    def __init__(self, init_observations: np.ndarray, observations: np.ndarray,
+                 actions: np.ndarray, next_observations: np.ndarray,
+                 next_actions: np.ndarray, dones_float: np.ndarray):
+        self.init_observations = init_observations
+        self.observations = observations
+        self.actions = actions
+        self.next_observations = next_observations
+        self.next_actions = next_actions
+        self.dones = dones_float
+        
+
 def load_d4rl_data(dirname, env_id, dataset_info, start_idx, dtype=np.float32, in_recursive=False) -> ImitationDataset:
     KEYS = ['observations', 'actions', 'rewards', 'terminals']
     MAX_EPISODE_STEPS = 1000
     dataname, num_trajectories = dataset_info
     recursive_num = -1
     if isinstance(dataname, list):
-        recursive_num = len(dataname)
-        dataname = dataname[0]
-        num_trajectories = num_trajectories[0]
-        start_idx = start_idx[0]
+        dataname_list = dataname
+        num_trajs_list = num_trajectories
+        start_idx_list = start_idx
+        recursive_num = len(dataname_list)
+        dataname = dataname_list[0]
+        num_trajectories = num_trajs_list[0]
+        start_idx = start_idx_list[0]
 
     original_env_id = env_id
     if env_id in ['Hopper-v2', 'Walker2d-v2', 'HalfCheetah-v2', 'Ant-v2']:
@@ -160,9 +178,9 @@ def load_d4rl_data(dirname, env_id, dataset_info, start_idx, dtype=np.float32, i
     if recursive_num > 1:
         
         recursive_num -= 1
-        dataname = dataname[1:]
-        num_trajectories = num_trajectories[1:]
-        start_idx = start_idx[1:]
+        dataname = dataname_list[1:]
+        num_trajectories = num_trajs_list[1:]
+        start_idx = start_idx_list[1:]
         dataset_info = (dataname, num_trajectories)
         np_init_obs, np_obs, np_action, np_next_obs, np_next_action, np_done = load_d4rl_data(dirname, env_id, dataset_info, 
                                                                                                 start_idx, in_recursive=True)
@@ -173,14 +191,15 @@ def load_d4rl_data(dirname, env_id, dataset_info, start_idx, dtype=np.float32, i
         concat_next_action = np.concatenate([next_action_, np_next_action], dtype=dtype)
         concat_done = np.concatenate([done_, np_done], dtype=dtype)
         
-        if in recursive:
+        if in_recursive:
             return concat_init_obs, concat_obs, concat_action, concat_next_obs, concat_next_action, concat_done
         else:
             print(f'{num_episodes} trajectories are sampled')
-            dataset = Imitationdataset(concat_init_obs, concat_obs, concat_action, concat_next_obs, concat_next_action, ocncat_done)
+            dataset = ImitationDataset(concat_init_obs, concat_obs, concat_action, concat_next_obs, concat_next_action, concat_done)
             return dataset
 
     if in_recursive:
+        print(f'{num_episodes} trajectories are sampled')
         return np.array(init_obs_, dtype=dtype), np.array(obs_, dtype=dtype), np.array(action_, dtype=dtype), np.array(
             next_obs_, dtype=dtype), np.array(next_action_, dtype=dtype), np.array(done_, dtype=dtype)
     else:
@@ -230,7 +249,7 @@ class MergeExpertUnion(object):
         self.union_dones = union_dataset.dones
     
     def sample(self, batch_size: int) -> ImitationBatch:
-        union_init_idndx = np.random.randint(len(self.union_init_observations), size=batch_size)
+        union_init_indx = np.random.randint(len(self.union_init_observations), size=batch_size)
         expert_indx = np.random.randint(len(self.expert_observations), size=batch_size)
         union_indx = np.random.randint(len(self.union_observations), size=batch_size)
         return ImitationBatch(union_init_observations=self.union_init_observations[union_init_indx],
@@ -243,18 +262,6 @@ class MergeExpertUnion(object):
                               union_next_observations=self.union_next_observations[union_indx],
                               union_next_actions=self.union_next_actions[union_indx],
                               union_dones=self.union_dones[union_indx])
-
-
-class ImitationDataset(object):
-    def __init__(self, init_observations: np.ndarray, observations: np.ndarray,
-                 actions: np.ndarray, next_observations: np.ndarray,
-                 next_actions: np.ndarray, dones_float: np.ndarray):
-        self.init_observations = init_observations
-        self.observations = observations
-        self.actions = actions
-        self.next_observations = next_observations
-        self.next_actions = next_actions
-        self.dones = dones_float
 
 
 class Dataset(object):

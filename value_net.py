@@ -18,15 +18,27 @@ class ValueCritic(nn.Module):
         return jnp.squeeze(critic, -1)
 
 
+class Cost(nn.Module):
+    hidden_dims: Sequence[int]
+    activations: Callable[[jnp.ndarray], jnp.ndarray] = nn.relu
+    layer_norm: bool = False
+
+    @nn.compact
+    def __call__(self, inputs: jnp.ndarray) -> jnp.ndarray:
+
+        critic = MLP((*self.hidden_dims, 1),
+                     layer_norm=self.layer_norm,
+                     activations=self.activations)(inputs)
+        return jnp.squeeze(critic, -1)
+
+
 class Critic(nn.Module):
     hidden_dims: Sequence[int]
     activations: Callable[[jnp.ndarray], jnp.ndarray] = nn.relu
     layer_norm: bool = False
 
     @nn.compact
-    def __call__(self, observations: jnp.ndarray,
-                 actions: jnp.ndarray) -> jnp.ndarray:
-        inputs = jnp.concatenate([observations, actions], -1)
+    def __call__(self, inputs: jnp.ndarray) -> jnp.ndarray:
         critic = MLP((*self.hidden_dims, 1),
                      layer_norm=self.layer_norm,
                      activations=self.activations)(inputs)
@@ -39,12 +51,11 @@ class DoubleCritic(nn.Module):
     layer_norm: bool = False
 
     @nn.compact
-    def __call__(self, observations: jnp.ndarray,
-                 actions: jnp.ndarray) -> Tuple[jnp.ndarray, jnp.ndarray]:
+    def __call__(self, inputs: jnp.ndarray) -> Tuple[jnp.ndarray, jnp.ndarray]:
         critic1 = Critic(self.hidden_dims,
                          activations=self.activations,
-                         layer_norm=self.layer_norm)(observations, actions)
+                         layer_norm=self.layer_norm)(inputs)
         critic2 = Critic(self.hidden_dims,
                          activations=self.activations,
-                         layer_norm=self.layer_norm)(observations, actions)
+                         layer_norm=self.layer_norm)(inputs)
         return critic1, critic2
