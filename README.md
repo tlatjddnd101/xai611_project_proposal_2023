@@ -10,3 +10,4 @@ docker pull tlatjddnd101/base:jpt_mujoco
 ```bash
 ./run.sh
 ```
+You can change the number of expert trajectories and random trajectories in run.sh file.
