@@ -17,10 +17,9 @@ flags.DEFINE_string('env_name', 'HalfCheetah-v2', 'Environment name.')
 flags.DEFINE_string('expert_dataset_name', 'expert-v2', 'name of expert dataset')
 flags.DEFINE_integer('expert_dataset_num', 1, 'num of expert dataset')
 flags.DEFINE_multi_string('suboptimal_dataset_name', ['expert-v2', 'random-v2'], 'list of name of suboptimal dataset')
-flags.DEFINE_multi_integer('suboptimal_dataset_num', [400, 100], 'list of num of suboptimal dataset')
+flags.DEFINE_multi_integer('suboptimal_dataset_num', [100, 400], 'list of num of suboptimal dataset')
 
-flags.DEFINE_string('save_dir', './results/', 'Tensorboard logging dir.')
-flags.DEFINE_integer('seed', 42, 'Random seed.')
+flags.DEFINE_integer('seed', 77, 'Random seed.')
 flags.DEFINE_integer('eval_interval', 10000, 'Eval interval.')
 flags.DEFINE_integer('batch_size', 256, 'Mini batch size.')
 flags.DEFINE_integer('max_steps', int(1e6), 'Number of training steps.')
@@ -84,9 +83,9 @@ def main(_):
         batch = train_dataset.sample(FLAGS.batch_size)
         update_info = agent.update(batch)
 
-        # if i % FLAGS.eval_interval == 0:
-        #     val_acc = evaluate_disc(agent, val_dataset)
-        #     log.row({'val_acc': val_acc})
+        if i % FLAGS.eval_interval == 0:
+            expert_acc, random_acc = evaluate_disc(agent, val_dataset)
+            log.row({'val_expert_acc': expert_acc, 'val_random_acc': random_acc})
 
 if __name__ == '__main__':
     app.run(main)

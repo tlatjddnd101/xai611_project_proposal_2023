@@ -16,7 +16,7 @@ for env in ${ENV_LIST[@]}; do
 		--suboptimal_dataset_num 100 \
 		--suboptimal_dataset_num 400 \
 		--config=config.py \
-		--max_steps 1000000 \
+		--max_steps 100000 \
 		--eval_interval 10000 \
 		--seed 77 
 	sleep 2

@@ -138,12 +138,12 @@ def load_d4rl_data(dirname, env_id, dataset_info, start_idx, dtype=np.float32, i
     if recursive_num > 1:
         
         recursive_num -= 1
-        dataname = dataname_list[1:]
-        num_trajectories = num_trajs_list[1:]
-        start_idx = start_idx_list[1:]
-        dataset_info = (dataname, num_trajectories)
+        rec_dataname = dataname_list[1:]
+        rec_num_trajectories = num_trajs_list[1:]
+        rec_start_idx = start_idx_list[1:]
+        dataset_info = (rec_dataname, rec_num_trajectories)
         np_init_obs, np_obs, np_action, np_next_obs, np_next_action, np_done = load_d4rl_data(dirname, env_id, dataset_info, 
-                                                                                                start_idx, in_recursive=True)
+                                                                                                rec_start_idx, in_recursive=True)
         concat_init_obs = np.concatenate([init_obs_, np_init_obs], dtype=dtype)
         concat_obs = np.concatenate([obs_, np_obs], dtype=dtype)
         concat_action = np.concatenate([action_, np_action], dtype=dtype)
