@@ -1,16 +1,15 @@
 from typing import Tuple
 import jax.numpy as jnp
 from common import PRNGKey
-import policy
 import jax
 
-from common import Batch, InfoDict, Model, Params
+from common import ImitationBatch, InfoDict, Model, Params
 
 EPS = jnp.finfo(jnp.float32).eps
 EPS2 = 1e-3
 
 
-def update_cost(key: PRNGKey, cost: Model, batch: Batch) -> Tuple[Model, InfoDict]:
+def update_cost(key: PRNGKey, cost: Model, batch: ImitationBatch) -> Tuple[Model, InfoDict]:
     
     expert_inputs = jnp.concatenate([batch.expert_observations, batch.expert_actions], axis=-1)
     union_inputs = jnp.concatenate([batch.union_observations, batch.union_actions], axis=-1)

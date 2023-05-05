@@ -154,16 +154,16 @@ def load_d4rl_data(dirname, env_id, dataset_info, start_idx, dtype=np.float32, i
         if in_recursive:
             return concat_init_obs, concat_obs, concat_action, concat_next_obs, concat_next_action, concat_done
         else:
-            print(f'{num_episodes} trajectories are sampled')
+            print(f'{num_episodes-start_idx} trajectories are sampled')
             dataset = ImitationDataset(concat_init_obs, concat_obs, concat_action, concat_next_obs, concat_next_action, concat_done)
             return dataset
 
     if in_recursive:
-        print(f'{num_episodes} trajectories are sampled')
+        print(f'{num_episodes-start_idx} trajectories are sampled')
         return np.array(init_obs_, dtype=dtype), np.array(obs_, dtype=dtype), np.array(action_, dtype=dtype), np.array(
             next_obs_, dtype=dtype), np.array(next_action_, dtype=dtype), np.array(done_, dtype=dtype)
     else:
-        print(f'{num_episodes} trajectories are sampled')
+        print(f'{num_episodes-start_idx} trajectories are sampled')
         dataset = ImitationDataset(np.array(init_obs_, dtype=dtype),
                         np.array(obs_, dtype=dtype),
                         np.array(action_, dtype=dtype),

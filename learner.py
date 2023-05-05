@@ -7,13 +7,13 @@ import optax
 
 import network
 
-from common import Batch, InfoDict, Model, PRNGKey
+from common import ImitationBatch, InfoDict, Model, PRNGKey
 
 from cost import update_cost
 
 @jax.jit
 def _update_jit_discriminator(
-    rng: PRNGKey, cost: Model, batch: Batch
+    rng: PRNGKey, cost: Model, batch: ImitationBatch
 ) -> Tuple[PRNGKey, Model, Model, Model, InfoDict]:
     
     key, rng = jax.random.split(rng)
@@ -45,7 +45,7 @@ class Learner(object):
         self.rng = rng
 
 
-    def update(self, batch: Batch) -> InfoDict:
+    def update(self, batch: ImitationBatch) -> InfoDict:
         # type <class 'str'> is not a valid JAX type.
 
         new_rng, new_cost, info = _update_jit_discriminator(

@@ -12,7 +12,10 @@ import optax
 def default_init(scale: Optional[float] = jnp.sqrt(2)):
     return nn.initializers.orthogonal(scale)
 
-
+ImitationBatch = collections.namedtuple(
+    'ImitationBatch',
+    ['union_init_observations', 'expert_observations', 'expert_actions', 'expert_next_observations', 'expert_next_actions',
+     'union_observations', 'union_actions', 'union_next_observations', 'union_next_actions', 'union_dones'])
 PRNGKey = Any
 Params = flax.core.FrozenDict[str, Any]
 PRNGKey = Any
