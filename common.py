@@ -8,10 +8,6 @@ import jax
 import jax.numpy as jnp
 import optax
 
-Batch = collections.namedtuple(
-    'Batch',
-    ['observations', 'actions', 'rewards', 'masks', 'next_observations', 'next_actions'])
-
 
 def default_init(scale: Optional[float] = jnp.sqrt(2)):
     return nn.initializers.orthogonal(scale)

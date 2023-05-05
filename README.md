@@ -1,13 +1,12 @@
-## aoil (SQL based[jax])
+# XAI611 project proposal 2023
+The baseline code for XAI611 project proposal, 2023
 
-SQL Offlicial Implementation based aoil
-
-## recommend docker image
+## recommended docker image to use
 ```bash
 docker pull tlatjddnd101/base:jpt_mujoco
 ```
 
 ## how to run
 ```bash
-./run_mujoco.sh
+./run.sh
 ```
