@@ -7,7 +7,7 @@ ENV_LIST=(
 	"Ant-v2"
 )
 
-let "gpu=2"
+let "gpu=0"
 for env in ${ENV_LIST[@]}; do
 	CUDA_VISIBLE_DEVICES=$gpu python train_offline.py \
 		--env_name $env \

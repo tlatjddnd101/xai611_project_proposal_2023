@@ -5,9 +5,6 @@ import jax
 
 from common import ImitationBatch, InfoDict, Model, Params
 
-EPS = jnp.finfo(jnp.float32).eps
-EPS2 = 1e-3
-
 
 def update_cost(key: PRNGKey, cost: Model, batch: ImitationBatch) -> Tuple[Model, InfoDict]:
     
