@@ -9,7 +9,7 @@ ENV_LIST=(
 
 let "gpu=0"
 for env in ${ENV_LIST[@]}; do
-	CUDA_VISIBLE_DEVICES=$gpu python train_offline.py \
+	XLA_PYTHON_CLIENT_MEM_FRACTION=.3 CUDA_VISIBLE_DEVICES=$gpu python train_offline.py \
 		--env_name $env \
 		--suboptimal_dataset_name 'expert-v2' \
 		--suboptimal_dataset_name 'random-v2' \
